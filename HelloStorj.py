@@ -1,40 +1,86 @@
-from UplinkPython import libUplinkPy
-import json
+from storjPython import uplinkPython
 
 if __name__ == "__main__":
 
-    #load default data from Storj config file
-    with open("storj_config.json") as json_file:
-        storj_config = json.load(json_file)
+    # Storj configuration information
+    myAPIKey = "change-me-to-the-api-key-created-in-satellite-gui"
+    satellite = "<host>:<port>"
+    myBucket = "my-first-bucket"
+    myStorjUploadPath = "(optional): path / (required): filename"  # (path + filename) OR filename
+    myEncryptionPassphrase = "you'll never guess this"
 
-    #local variables with value from config file
-    apikey = storj_config['apikey']
-    satellite = storj_config['satellite']
-    bucket = storj_config['bucket']
-    uploadPath = storj_config['uploadPath']
-    encryptionpassphrase = storj_config['encryptionpassphrase']
+    # Source and destination path and file name for testing
+    srcFullFileName = "filename with extension of source file on local system"
+    destFullFileName = "filename with extension to save on local system"
 
-    #Source and destination path and file name for testing
-    srcFullFileName = "SampleData.txt"
-    destFullPathName = "DownloadedFile.txt"
+    # create an object of libUplinkPy class
+    StorjObj = uplinkPython.libUplinkPy()
 
-    debugMode = True
+    # function calls
+    uplinkHandle, err = StorjObj.new_uplink()
+    if err is not None:
+        print(err)
+        exit()
 
-    #create an object of libUplinkPy class
-    StorjObj = libUplinkPy(debugMode)
+    parseApiKeyHandle, err = StorjObj.parse_api_key(myAPIKey)
+    if err is not None:
+        print(err)
+        exit()
 
-    #function calls
-    if StorjObj.new_uplink() is True:
-        if StorjObj.parse_api_key(apikey) is True:
-            if StorjObj.open_project(satellite) is True:
-                if StorjObj.create_bucket(bucket) is True:
-                    if StorjObj.get_encryption_access(encryptionpassphrase) is True:
-                        if StorjObj.open_bucket(bucket) is True:
-                            if StorjObj.upload(uploadPath, srcFullFileName) is True:
-                                StorjObj.download(uploadPath, destFullPathName)
-                            # close the opened Storj bucket
-                            StorjObj.close_bucket()
-                # close the opened Storj project
-                StorjObj.close_project()
-        # close the opened Storj uplink
-        StorjObj.close_uplink()
+    projectHandle, err = StorjObj.open_project(uplinkHandle, parseApiKeyHandle, satellite)
+    if err is not None:
+        print(err)
+        exit()
+
+    serializedEncryptionAccess, err = StorjObj.get_encryption_access(projectHandle, myEncryptionPassphrase)
+    if err is not None:
+        print(err)
+        exit()
+
+    # set bucket config according to this link:
+    # https://godoc.org/storj.io/storj/lib/uplink#BucketConfig
+    configBucket = uplinkPython.BucketConfig()
+    configBucket.path_cipher = uplinkPython.STORJ_ENC_AESGCM
+    configBucket.encryption_parameters.cipher_suite = uplinkPython.STORJ_ENC_AESGCM
+    configBucket.encryption_parameters.block_size = 7424
+    configBucket.redundancy_scheme.algorithm = uplinkPython.STORJ_REED_SOLOMON
+    configBucket.redundancy_scheme.share_size = 256
+    configBucket.redundancy_scheme.required_shares = 29
+    configBucket.redundancy_scheme.repair_shares = 35
+    configBucket.redundancy_scheme.optimal_shares = 80
+    configBucket.redundancy_scheme.total_shares = 130
+
+    bucketHandle, err = StorjObj.create_bucket(projectHandle, myBucket, configBucket)
+    if err is not None:
+        print(err)
+        exit()
+
+    bucketHandle, err = StorjObj.open_bucket(projectHandle, serializedEncryptionAccess, myBucket)
+    if err is not None:
+        print(err)
+        exit()
+
+    uploadStatus, err = StorjObj.upload_file(bucketHandle, myStorjUploadPath, srcFullFileName)
+    if err is not None or uploadStatus is False:
+        print(err)
+        exit()
+
+    downloadStatus, err = StorjObj.download_file(bucketHandle, myStorjUploadPath, destFullFileName)
+    if err is not None or downloadStatus is False:
+        print(err)
+        exit()
+
+    err = StorjObj.close_bucket(bucketHandle)
+    if err is not None:
+        print(err)
+        exit()
+
+    err = StorjObj.close_project(projectHandle)
+    if err is not None:
+        print(err)
+        exit()
+
+    err = StorjObj.close_uplink(uplinkHandle)
+    if err is not None:
+        print(err)
+        exit()
